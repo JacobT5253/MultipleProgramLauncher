@@ -14,4 +14,4 @@ namespace MultipleProgramLauncher
             Application.Run(new MPL());
         }
     }
-}
+}    

@@ -1,25 +1,38 @@
 using System.CodeDom.Compiler;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
+using System.Formats.Asn1;
+using System.Globalization;
+using System.Text;
 using System.Windows.Forms;
+using CsvHelper;
+using CsvHelper.Configuration;
+using IWshRuntimeLibrary;
 
 namespace MultipleProgramLauncher
 {
     public partial class MPL : Form
     {
-        private List<string> selectedFiles = new List<string>(); // List to store selected file paths
-        private List<int> programDelays = new List<int>();
+        // new implementation with the program class
+        List<CustomProgram> programs = new List<CustomProgram>();
+        List<Profile> profiles;
+
         public MPL()
         {
             InitializeComponent();
-            this.MinimumSize = new Size(400, 200);
+            profiles = LoadProfiles(); // load the profiles from the .csv files
+            Debug.WriteLine("Profiles have been loaded");
+            printProfiles();
+            DisplayProfilesInUI();
+            Debug.WriteLine("Profiles Should be displayed");
+            this.MinimumSize = new Size(760, 490);
         }
 
         // When the create button is clicked
         private void CreateNewBatch_Click(object sender, EventArgs e)
         {
-            HomePanel.Hide();
-            CreateBatchPanel.Show();
+            Home_Panel.Hide();
+            CreateBatch_Panel.Show();
         }
 
         private void RemoveButton_Click(object sender, EventArgs e)
@@ -29,135 +42,46 @@ namespace MultipleProgramLauncher
 
             Debug.WriteLine($"\nRemove Button clicked for indexToRemove {indexToRemove}");
             Debug.WriteLine("SelectedFiles before removing:");
-            for (int i = 0; i< selectedFiles.Count; i++)
-            {
-                // Split the path into two parts using the last "\" character as the delimiter
-                int lastBackslashIndex = selectedFiles[i].LastIndexOf('\\');
-                //string one = selectedFiles[i].Substring(0, lastBackslashIndex);
-                //string two = selectedFiles[i].Substring(lastBackslashIndex + 1);
-                Debug.Write($"{selectedFiles[i].Substring(lastBackslashIndex + 1)} ");
-            }
-            Debug.Write("\n");
-            //Debug.WriteLine($"{selectedFiles}");
-            Debug.WriteLine("ProgramDelays before removing:");
-            for (int i = 0; i < programDelays.Count; i++)
-            {
-                Debug.Write($"{programDelays[i]} ");
-            }
-            Debug.Write("\n");
-            //Debug.WriteLine($"{programDelays}");
+            
+            printProgramsArray(); // will print out the programs array with each program path, delay, and bool
 
             // Remove the corresponding filePathPanel from the TablePanel
-            Control[] filePathPanels = TablePanel.Controls.Find("FilePathPanel" + indexToRemove, false);
-            
+            Control[] filePathPanels = Middle_Create_Flow_Panel.Controls.Find("FilePathPanel" + indexToRemove, false);
+
             if (filePathPanels.Length > 0)
             {
                 Debug.WriteLine($"NumPanels before = {filePathPanels.Length}");
                 Control filePathPanel = filePathPanels[0];
-                TablePanel.Controls.Remove(filePathPanel);
+                Middle_Create_Flow_Panel.Controls.Remove(filePathPanel);
                 filePathPanel.Dispose();
                 Debug.WriteLine($"NumPanels after = {filePathPanels.Length}");
             }
 
             // Remove the file path and delay from the arrays
-            selectedFiles.RemoveAt(indexToRemove);
-            programDelays.RemoveAt(indexToRemove);
+            programs.RemoveAt(indexToRemove);
 
             Debug.WriteLine("\nSelectedFiles after removing:");
-            for (int i = 0; i < selectedFiles.Count; i++)
-            {
-                int lastBackslashIndex = selectedFiles[i].LastIndexOf('\\');
-                Debug.Write($"{selectedFiles[i].Substring(lastBackslashIndex + 1)} ");
-            }
-            Debug.Write("\n");
-            //Debug.WriteLine($"{selectedFiles}");
-            Debug.WriteLine("ProgramDelays after removing:");
-            for (int i = 0; i < programDelays.Count; i++)
-            {
-                Debug.Write($"{programDelays[i]} ");
-            }
-            Debug.Write('\n');
+            printProgramsArray(); // print all the programs after removing, to make sure the correct one is removed
+
             // Update the Tag property of the remove buttons and delay text boxes
-            UpdateTags(indexToRemove);
-        }
-        /*
-        private void UpdateTags(int indexToRemove)
-        {
-            // Find all the filePathPanels in the TablePanel
-            Control[] filePathPanels = TablePanel.Controls.OfType<Panel>().ToArray();
-
-            for (int i = 0; i < filePathPanels.Length; i++)
-            {
-                // Update the Tag property of the filePathPanel
-                filePathPanels[i].Tag = i;
-
-                // Update the Tag property of the remove button
-                Control[] removeButtons = filePathPanels[i].Controls.Find("RemoveButton", true);
-                if (removeButtons.Length > 0)
-                {
-                    Button removeButton = (Button)removeButtons[0];
-                    removeButton.Tag = i;
-                }
-
-                // Update the Tag property of the delay text box
-                Control[] delayTextBoxes = filePathPanels[i].Controls.Find("DelayTextBox", true);
-                if (delayTextBoxes.Length > 0)
-                {
-                    TextBox delayTextBox = (TextBox)delayTextBoxes[0];
-                    delayTextBox.Tag = i;
-                }
-            }
-        }*/
-        private void UpdateTags(int indexToRemove)
-        {
-            //printPanelsFromTable();
-            adjustPanels(indexToRemove);
+            AdjustPanels(indexToRemove);
+            //DisplayFilePathsInTable();
         }
 
-        private void printPanelsFromTable()
+        private void printProgramsArray()
         {
-            // Find all the filePathPanels in the TablePanel
-            Control[] filePathPanels = TablePanel.Controls.OfType<Panel>().ToArray();
-            Debug.WriteLine($"num of panels: {filePathPanels.Length}");
-            for (int i = 0; i < filePathPanels.Length; i++)
+            for (int i = 0; i < programs.Count; i++)
             {
-                int cur = (int)filePathPanels[i].Tag;
-                Debug.WriteLine($"Current index = {cur}");
-                //now that we have all the attributes we want to work with. we can now edit them if they are at an index that is larger than the index of removal
-
-                Debug.WriteLine($"panel: {filePathPanels[i].Name} tag: {filePathPanels[i].Tag}");
-
-                // get the button and other attributes of the panel they will be index 0 because there are only 1 of each.
-                Control[] removeButtons = filePathPanels[i].Controls.OfType<Button>().ToArray();
-                if (removeButtons.Length > 0)
-                {
-                    Button removeButton = (Button)removeButtons[0];
-                    Debug.WriteLine($"button: {removeButton.Name} tag: {removeButton.Tag}");
-                    //removeButton.Tag = cur - 1; // update the tag for the button
-                }
-                Control[] delayTextBoxes = filePathPanels[i].Controls.OfType<TextBox>().ToArray();
-                if (delayTextBoxes.Length > 0)
-                {
-                    TextBox delayTextBox = (TextBox)delayTextBoxes[0];
-                    Debug.WriteLine($"delay: {delayTextBox.Name} tag: {delayTextBox.Tag}");
-                    //delayTextBox.Tag = cur - 1; //update the tag for the textbox
-                }
-                Control[] filePathLabels = filePathPanels[i].Controls.OfType<Label>().ToArray();
-                if (filePathLabels.Length > 0)
-                {
-                    Label textLabel = (Label)filePathLabels[0];
-                    Debug.WriteLine($"text: {textLabel.Name} tag: {textLabel.Tag}");
-                    //textLabel.Tag = cur - 1; //update the tag for the label and update its text
-                    //Debug.WriteLine($"i = {i}");
-                    //textLabel.Text = $"{selectedFiles[i]} + {filePathPanels[i].Tag}";
-                }
+                // Split the path into two parts using the last "\" character as the delimiter
+                int lastBackslashIndex = programs[i].Path.LastIndexOf('\\');
+                Debug.WriteLine($"{programs[i].Path.Substring(lastBackslashIndex + 1)} delay: {programs[i].Delay} isAdmin: {programs[i].IsAdmin}");
             }
         }
 
-        private void adjustPanels(int indexToRemove)
+        private void AdjustPanels(int indexToRemove)
         {
             // Find all the filePathPanels in the TablePanel
-            Control[] filePathPanels = TablePanel.Controls.OfType<Panel>().ToArray();
+            Control[] filePathPanels = Middle_Create_Flow_Panel.Controls.OfType<Panel>().ToArray();
             Debug.WriteLine($"num of panels: {filePathPanels.Length}");
             for (int i = 0; i < filePathPanels.Length; i++)
             {
@@ -174,7 +98,7 @@ namespace MultipleProgramLauncher
                     Debug.WriteLine($"panel: {filePathPanels[i].Name} tag: {filePathPanels[i].Tag}");
                     //update the tag and Name for the panel
                     filePathPanels[i].Tag = cur - 1;
-                    filePathPanels[i].Name = "FilePathPanel" + (cur-1);
+                    filePathPanels[i].Name = "FilePathPanel" + (cur - 1);
 
 
                     //Update the name and tag of the button in the panel
@@ -184,7 +108,7 @@ namespace MultipleProgramLauncher
                         Button removeButton = (Button)removeButtons[0];
                         Debug.WriteLine($"button: {removeButton.Name} tag: {removeButton.Tag}");
                         removeButton.Tag = cur - 1; // update the tag for the button
-                        removeButton.Name = "RemoveButton" + (cur-1);
+                        removeButton.Name = "RemoveButton" + (cur - 1);
                     }
 
                     //update the name and tag of the text box
@@ -194,7 +118,7 @@ namespace MultipleProgramLauncher
                         TextBox delayTextBox = (TextBox)delayTextBoxes[0];
                         Debug.WriteLine($"delay: {delayTextBox.Name} tag: {delayTextBox.Tag}");
                         delayTextBox.Tag = cur - 1; //update the tag for the textbox
-                        delayTextBox.Name = "DelayTextBox" + (cur-1);
+                        delayTextBox.Name = "DelayTextBox" + (cur - 1);
                     }
                     Control[] filePathLabels = filePathPanels[i].Controls.OfType<Label>().ToArray();
                     if (filePathLabels.Length > 0)
@@ -203,8 +127,8 @@ namespace MultipleProgramLauncher
                         Debug.WriteLine($"text: {textLabel.Name} tag: {textLabel.Tag}");
                         textLabel.Tag = cur - 1; //update the tag for the label and update its text
                         Debug.WriteLine($"i = {i}");
-                        textLabel.Text = $"{selectedFiles[i]} + {filePathPanels[i].Tag}";
-                        textLabel.Name = "DelayLabel" + (cur-1);
+                        textLabel.Text = $"{programs[i].Path} + {filePathPanels[i].Tag}";
+                        textLabel.Name = "DelayLabel" + (cur - 1);
                     }
 
 
@@ -233,8 +157,7 @@ namespace MultipleProgramLauncher
 
             }
         }
-
-        private void AddExeFiles_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+        private void AddExeFiles_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e) // fixed
         {
             OpenFileDialog openFileDialog = new OpenFileDialog();
             openFileDialog.Filter = "Executable Files (*.exe)|*.exe";
@@ -245,43 +168,44 @@ namespace MultipleProgramLauncher
             {
                 // Get the selected file paths
                 string[] selectedFilePaths = openFileDialog.FileNames;
-                int len = selectedFilePaths.Length;
-                Debug.WriteLine($"{len} programs");
-                // Save the selected file paths to the list
-                selectedFiles.AddRange(selectedFilePaths);
- 
-                for (int i = 0; i < len; i++) 
+
+                foreach (string pathToAdd in selectedFilePaths)
                 {
-                    programDelays.Add(0);
-                    
+                    if (!programs.Any(p => p.Path == pathToAdd))
+                    {
+                        programs.Add(new CustomProgram
+                        {
+                            Path = pathToAdd,
+                            Delay = 0,
+                            IsAdmin = false
+                        });
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Program {pathToAdd} already in the list", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
                 }
-                Debug.WriteLine($"{programDelays.Count} program Delays");
+
+                Debug.WriteLine($"{programs.Count} programs");
                 Debug.WriteLine("Programs:");
-                for (int i = 0; i< selectedFiles.Count; i++)
+                foreach (CustomProgram program in programs)
                 {
-                    int lastBackslashIndex = selectedFiles[i].LastIndexOf('\\');
-                    Debug.Write($"{selectedFiles[i].Substring(lastBackslashIndex + 1)} ");
+                    Debug.WriteLine($"Path: {program.Path}, Delay: {program.Delay}, Is Admin: {program.IsAdmin}");
                 }
-                Debug.Write("\n");
-                Debug.WriteLine("Program Delays:");
-                for (int i = 0; i< programDelays.Count; i++) 
-                {
-                    Debug.Write($"{programDelays[i]} ");
-                }
-                Debug.Write("\n");
-                //programDelays = new List<int>(len);
+
                 // Display the file paths in the CreateBatchPanel
                 DisplayFilePathsInTable();
             }
         }
 
+
         private void DisplayFilePathsInTable()
         {
             // Clear the CreateBatchPanel before displaying the file paths
-            //TablePanel.Controls.Clear();
+            Middle_Create_Flow_Panel.Controls.Clear();
 
             // Iterate through the selected file paths and display each as a row
-            for (int i = 0; i < selectedFiles.Count; i++)
+            for (int i = 0; i < programs.Count; i++)
             {
 
                 Panel filePathPanel = new Panel();
@@ -293,7 +217,7 @@ namespace MultipleProgramLauncher
                 // Create a Label for the file path
                 Label filePathLabel = new Label();
                 filePathLabel.Name = "FilePathLabel" + i;
-                filePathLabel.Text = $"{selectedFiles[i]} + {filePathPanel.Tag}";
+                filePathLabel.Text = $"{programs[i].Path} + {filePathPanel.Tag}";
                 filePathLabel.AutoSize = true;
                 filePathLabel.Location = new Point(10, 10);
                 filePathLabel.Tag = i;
@@ -332,14 +256,79 @@ namespace MultipleProgramLauncher
                 filePathPanel.Controls.Add(delayTextBox);
 
                 // Add the filePathPanel to the CreateBatchPanel
-                TablePanel.Controls.Add(filePathPanel);
+                Middle_Create_Flow_Panel.Controls.Add(filePathPanel);
                 //CreateBatchPanel.Controls.Add(filePathPanel);
             }
 
-            // Update the Tag property of the remove buttons
-            //UpdateTags();
-            // Update the Tag property of the delay text boxes after rearranging the elements
-            //UpdateDelayTextBoxTags(); already taken care of in the UpdateRemoveButtonTags()function
+        }
+
+        private void DisplayProfilesInUI()
+        {
+            // Clear the existing panels in the FlowLayoutPanel
+            ProgramLauncher_Flow_Panel.Controls.Clear();
+
+            // Iterate through the 'profiles' list and create panels for each profile
+            for (int i = 0; i < profiles.Count; i++)
+            {
+                // Create a panel for this profile
+                Panel profilePanel = new Panel();
+                //profilePanel.BorderStyle = BorderStyle.FixedSingle;
+                profilePanel.Size = new Size(1033, 100);
+                profilePanel.Name = "ProfilePanel" + i; // Set a unique name for each Panel
+                profilePanel.Tag = i;
+
+
+                // Create a label to display the profile name
+                Label nameLabel = new Label();
+                nameLabel.Text = profiles[i].Name;
+                nameLabel.AutoSize = true;
+                nameLabel.Location = new Point(10, 10);
+                nameLabel.Tag = i;  
+
+                // Create a button to remove the profile (you can customize this part)
+                Button removeButton = new Button();
+                removeButton.Text = "Remove";
+                removeButton.Size = new Size(100, 30);
+                removeButton.Location = new Point(10, nameLabel.Bottom + 5); ;
+                removeButton.Tag = i;
+
+                Button editButton = new Button();
+                editButton.Text = "Edit";
+                editButton.Size = new Size(100, 30);
+                editButton.Location = new Point(150, nameLabel.Bottom + 5);
+                editButton.Tag = i;
+
+                Button launchProgramsButton = new Button();
+                launchProgramsButton.Text = "Launch";
+                launchProgramsButton.Size = new Size(100, 30);
+                launchProgramsButton.Location = new Point(500, nameLabel.Bottom + 5);
+                launchProgramsButton.Tag = i;
+
+                // Attach a Click event handler for the remove button
+                removeButton.Click += (sender, e) =>
+                {
+                    // Handle the removal of the profile here
+                    // You can access the 'profile' object associated with this panel
+                    // using the Tag property or any other method you prefer
+                };
+
+                // Add the label and remove button to the profile panel
+                profilePanel.Controls.Add(nameLabel);
+                profilePanel.Controls.Add(removeButton);
+                profilePanel.Controls.Add(editButton);
+                profilePanel.Controls.Add(launchProgramsButton);
+                profilePanel.Controls.Add(launchProgramsButton);
+                // Add the profile panel to the FlowLayoutPanel
+                ProgramLauncher_Flow_Panel.Controls.Add(profilePanel);
+            }
+        }
+
+        private void printProfiles()
+        {
+            foreach (var profile in profiles)
+            {
+                Debug.WriteLine($"{profile.Name}");
+            }
         }
 
         private void DelayTextBox_TextChanged(object sender, EventArgs e)
@@ -351,91 +340,277 @@ namespace MultipleProgramLauncher
             int delayMilliseconds;
             if (int.TryParse(delayTextBox.Text, out delayMilliseconds))
             {
-                programDelays[indexToUpdate] = delayMilliseconds;
+                programs[indexToUpdate].Delay = delayMilliseconds;
             }
         }
 
-        private void ExportBatch_Click(object sender, EventArgs e)
+
+
+        private void SaveButton_Click(object sender, EventArgs e)
         {
-            SaveFileDialog saveFileDialog = new SaveFileDialog();
-            saveFileDialog.Filter = "Batch Files (*.bat)|*.bat";
-            saveFileDialog.Title = "Export Batch File";
-
-            if (saveFileDialog.ShowDialog() == DialogResult.OK)
+            if (programs.Count == 0)
             {
-                string batchFilePath = saveFileDialog.FileName;
+                MessageBox.Show("Please add programs to the list before exporting.");
+                return;
+            }
 
-                using (StreamWriter writer = new StreamWriter(batchFilePath))
+            try
+            {
+                string projectDirectory = Directory.GetParent(Directory.GetParent(Directory.GetParent(Directory.GetParent(Application.StartupPath).FullName).FullName).FullName).FullName;
+                string userCreatedFilesPath = Path.Combine(projectDirectory, "UserCreatedFiles");
+
+                // Create the UserCreatedFiles folder if it doesn't exist
+                if (!Directory.Exists(userCreatedFilesPath))
+                    Directory.CreateDirectory(userCreatedFilesPath);
+
+                // Create a SaveFileDialog to let the user choose the CSV file name and location
+                SaveFileDialog saveFileDialog = new SaveFileDialog();
+                saveFileDialog.Filter = "CSV Files (*.csv)|*.csv";
+                saveFileDialog.Title = "Export Profile";
+                saveFileDialog.InitialDirectory = userCreatedFilesPath;
+
+                if (saveFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    // Add the @echo off at the top
-                    writer.WriteLine("@echo off");
+                    string csvFilePath = saveFileDialog.FileName;
 
-                    for (int i = 0; i < selectedFiles.Count; i++)
+                    using (var writer = new StreamWriter(csvFilePath))
+                    using (var csv = new CsvWriter(writer, new CsvConfiguration(CultureInfo.InvariantCulture)))
                     {
-                        // Split the path into two parts using the last "\" character as the delimiter
-                        int lastBackslashIndex = selectedFiles[i].LastIndexOf('\\');
-                        string one = selectedFiles[i].Substring(0, lastBackslashIndex);
-                        string two = selectedFiles[i].Substring(lastBackslashIndex + 1);
+                        // Manually write the CSV header
+                        csv.WriteField("Program Path");
+                        csv.WriteField("Delay (ms)");
+                        csv.WriteField("Is Admin");
+                        csv.NextRecord();
 
-                        // Write the 'cd "{one}"' command to navigate to the directory of the EXE file
-                        writer.WriteLine("cd \"" + one + "\"");
-
-                        // Write the 'start two' command to open the program
-                        writer.WriteLine("start " + two);
-
-                        // Write the 'ping' command to add the specified delay between launching programs
-                        int delayMilliseconds = programDelays[i];
-                        if (delayMilliseconds > 0)
+                        // Write each program to the CSV file
+                        foreach (var program in programs)
                         {
-                            int seconds = delayMilliseconds / 1000;
-                            writer.WriteLine("ping 127.0.0.1 -n 1 -w " + delayMilliseconds);
+                            csv.WriteField(program.Path);
+                            csv.WriteField(program.Delay);
+                            csv.WriteField(program.IsAdmin);
+                            csv.NextRecord();
                         }
                     }
+
+                    // Create a new profile with the exported programs
+                    Profile newProfile = new Profile
+                    {
+                        Name = Path.GetFileNameWithoutExtension(csvFilePath),
+                        programs = programs.ToList() // Copy the programs to avoid modifying the original list
+                    };
+
+                    // Add the new profile to the profiles array
+                    profiles.Add(newProfile);
+
+                    // Save the updated profile order
+                    SaveProfileOrder(profiles);
+
+                    MessageBox.Show("Profile exported successfully!", "Export Successful", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
-
-                MessageBox.Show("Batch file exported successfully!", "Export Successful", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
-
-            //most recent version
-        }
-
-        // this code below is for the conversion to a .cs file to open the programs.
-        /*private void ExportButton_Click(object sender, EventArgs e)
-        {
-            // Load the template program content
-            string templateContent = File.ReadAllText("ProgramTemplate.cs");
-
-            // Replace placeholders with actual data
-            string pathsArray = "string[] paths = new string[]\n{\n";
-            foreach (string path in selectedFiles)
+            catch (Exception ex)
             {
-                pathsArray += $"    \"{path}\",\n";
+                MessageBox.Show("An error occurred: " + ex.Message);
             }
-            pathsArray += "};";
-
-            string delaysArray = "int[] delays = new int[]\n{\n";
-            foreach (int delay in programDelays)
-            {
-                delaysArray += $"    {delay},\n";
-            }
-            delaysArray += "};";
-
-            // Replace the placeholders in the template content
-            templateContent = templateContent.Replace("\"program\"", pathsArray);
-            templateContent = templateContent.Replace("1000", delaysArray);
-
-            // Save the modified content to a new file
-            string exportFileName = "GeneratedProgram.cs";
-            File.WriteAllText(exportFileName, templateContent);
-
-            MessageBox.Show("Program exported successfully!");
         }
-        */
 
-        private void EditBatch_Click(object sender, EventArgs e)
+
+
+
+
+
+
+        private void CreateShortcut(string batchFilePath)
         {
+            string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            string shortcutPath = Path.Combine(desktopPath, Path.GetFileNameWithoutExtension(batchFilePath) + " shortcut.lnk");
 
+            WshShell shell = new WshShell();
+            IWshShortcut shortcut = (IWshShortcut)shell.CreateShortcut(shortcutPath);
+            shortcut.TargetPath = batchFilePath;
+            shortcut.Save();
         }
+
+
+        private void print(object stuffToPrint)
+        {
+            Debug.WriteLine(stuffToPrint);
+        }
+
+        private void AddPathButton_Click(object sender, EventArgs e)
+        {
+            string pathToAdd = PathTextBox.Text.Trim();
+
+            if (!string.IsNullOrEmpty(pathToAdd) && System.IO.File.Exists(pathToAdd))
+            {
+                // Check if the program already exists in the list
+                if (programs.Any(program => program.Path == pathToAdd))
+                {
+                    MessageBox.Show($"Program {pathToAdd} already in the list", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                else
+                {
+                    // Add the program to the list
+                    programs.Add(new CustomProgram
+                    {
+                        Path = pathToAdd,
+                        Delay = 0,
+                        IsAdmin = false
+                    });
+
+                    // Display the file paths in the CreateBatchPanel
+                    DisplayFilePathsInTable();
+
+                    PathTextBox.Clear();
+
+                    Debug.WriteLine($"Programs count: {programs.Count}");
+
+                    Debug.WriteLine("Programs:");
+                    foreach (var program in programs)
+                    {
+                        Debug.Write($"{Path.GetFileName(program.Path)} ");
+                    }
+
+                    Debug.Write("\n");
+                }
+            }
+            else
+            {
+                MessageBox.Show("Invalid path or path does not exist.", "Invalid Path", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+
+        private void backButton_Click(object sender, EventArgs e)
+        {
+            CreateBatch_Panel.Hide();
+            Home_Panel.Show();
+            DisplayProfilesInUI();
+            programs.Clear();  // Clear the programs list instead of selectedFiles and programDelays
+            Middle_Create_Flow_Panel.Controls.Clear();
+        }
+
+
+
+
+        private void CreateProfile_Button_Click(object sender, EventArgs e)
+        {
+            CreateBatch_Panel.Show();
+            Home_Panel.Hide();
+        }
+
+
+        private List<Profile> LoadProfiles()
+        {
+            string projectDirectory = Directory.GetParent(Directory.GetParent(Directory.GetParent(Directory.GetParent(Application.StartupPath).FullName).FullName).FullName).FullName;
+            string userCreatedFilesPath = Path.Combine(projectDirectory, "UserCreatedFiles");
+
+            List<Profile> profiles = new List<Profile>();
+
+            // Load the profile order
+            List<string> profileOrder = LoadProfileOrder();
+
+            // Check if the UserCreatedFiles folder exists
+            if (Directory.Exists(userCreatedFilesPath))
+            {
+                // Iterate through the profile order and load profiles accordingly
+                foreach (string profileName in profileOrder)
+                {
+                    string csvFile = Path.Combine(userCreatedFilesPath, profileName + ".csv");
+
+                    if (System.IO.File.Exists(csvFile))
+                    {
+                        // Create a new Profile object
+                        Profile profile = new Profile
+                        {
+                            Name = profileName,
+                            programs = new List<CustomProgram>()
+                        };
+
+                        using (var reader = new StreamReader(csvFile))
+                        using (var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = false }))
+                        {
+                            // Skip the header line if it exists
+                            csv.Read();
+
+                            while (csv.Read())
+                            {
+                                string name = csv.GetField<string>(0);     // Assuming the name is in the first column
+                                int delay = csv.GetField<int>(1);           // Assuming the delay is in the second column
+                                bool isAdmin = csv.GetField<bool>(2);       // Assuming isAdmin is in the third column
+
+                                // Create a new CustomProgram and add it to the profile's programs list
+                                CustomProgram program = new CustomProgram
+                                {
+                                    Path = name,
+                                    Delay = delay,
+                                    IsAdmin = isAdmin
+                                };
+
+                                profile.programs.Add(program);
+                            }
+                        }
+
+                        profiles.Add(profile);
+                    }
+                }
+            }
+
+            return profiles;
+        }
+
+
+        private void SaveProfileOrder(List<Profile> profiles)
+        {
+            try
+            {
+                string projectDirectory = Directory.GetParent(Directory.GetParent(Directory.GetParent(Directory.GetParent(Application.StartupPath).FullName).FullName).FullName).FullName;
+                string userCreatedFilesPath = Path.Combine(projectDirectory, "UserCreatedFiles");
+                string profileOrderFilePath = Path.Combine(userCreatedFilesPath, "ProfileOrder.csv");
+
+                using (var writer = new StreamWriter(profileOrderFilePath))
+                using (var csv = new CsvWriter(writer, new CsvConfiguration(CultureInfo.InvariantCulture)))
+                {
+                    // Write the profile names to the CSV file
+                    foreach (var profile in profiles)
+                    {
+                        csv.WriteField(profile.Name);
+                        csv.NextRecord();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("An error occurred while saving the profile order: " + ex.Message);
+            }
+        }
+
+
+        private List<string> LoadProfileOrder()
+        {
+            string projectDirectory = Directory.GetParent(Directory.GetParent(Directory.GetParent(Directory.GetParent(Application.StartupPath).FullName).FullName).FullName).FullName;
+            string profileOrderPath = Path.Combine(projectDirectory, "UserCreatedFiles", "ProfileOrder.csv");
+
+            List<string> profileOrder = new List<string>();
+
+            if (System.IO.File.Exists(profileOrderPath))
+            {
+                using (var reader = new StreamReader(profileOrderPath))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        profileOrder.Add(line);
+                    }
+                }
+            }
+
+            return profileOrder;
+        }
+
+
 
     }
+
+
 }
