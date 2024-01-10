@@ -5,6 +5,7 @@ using System.Formats.Asn1;
 using System.Globalization;
 using System.Text;
 using System.Windows.Forms;
+using System.Xml;
 using CsvHelper;
 using CsvHelper.Configuration;
 using IWshRuntimeLibrary;
@@ -35,7 +36,7 @@ namespace MultipleProgramLauncher
             CreateBatch_Panel.Show();
         }
 
-        private void RemoveButton_Click(object sender, EventArgs e)
+        private void RemoveProgramButton_Click(object sender, EventArgs e)
         {
             Button removeButton = (Button)sender;
             int indexToRemove = (int)removeButton.Tag;
@@ -66,6 +67,107 @@ namespace MultipleProgramLauncher
             // Update the Tag property of the remove buttons and delay text boxes
             AdjustPanels(indexToRemove);
             //DisplayFilePathsInTable();
+        }
+
+        private void RemoveProfileButton_Click(object sender, EventArgs e)
+        {
+            Button removeProfileButton = (Button)sender;
+            int indexToRemove = (int)removeProfileButton.Tag;
+
+            // Get the profile associated with this button
+            Profile profileToRemove = profiles[(int)removeProfileButton.Tag];
+
+            // Construct the path to the .csv file
+            string projectDirectory = Directory.GetParent(Directory.GetParent(Directory.GetParent(Directory.GetParent(Application.StartupPath).FullName).FullName).FullName).FullName;
+            string userCreatedFilesPath = Path.Combine(projectDirectory, "UserCreatedFiles");
+            string csvFilePath = Path.Combine(userCreatedFilesPath, profileToRemove.Name + ".csv");
+
+            // Delete the .csv file
+            if (System.IO.File.Exists(csvFilePath))
+            {
+                System.IO.File.Delete(csvFilePath);
+            }
+
+            // Remove the profile from the 'profiles' list
+            profiles.Remove(profileToRemove);
+
+            // Save the updated profile order
+            SaveProfileOrder(profiles);
+
+            // Refresh the UI
+            DisplayProfilesInUI();
+        }
+
+        private void EditButton_Click(object sender, EventArgs e)
+        {
+            Button editProfileButton = (Button)sender;
+            Profile profileToEdit = profiles[(int)editProfileButton.Tag];
+
+            // Construct the path to the .csv file
+            string projectDirectory = Directory.GetParent(Directory.GetParent(Directory.GetParent(Directory.GetParent(Application.StartupPath).FullName).FullName).FullName).FullName;
+            string userCreatedFilesPath = Path.Combine(projectDirectory, "UserCreatedFiles");
+            string csvFilePath = Path.Combine(userCreatedFilesPath, profileToEdit.Name + ".csv");
+
+            // Load the programs from the .csv file
+            using (var reader = new StreamReader(csvFilePath))
+            using (var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = false }))
+            {
+                // Skip the header line if it exists
+                csv.Read();
+
+                // Clear the current programs list
+                programs.Clear();
+
+                while (csv.Read())
+                {
+                    string name = csv.GetField<string>(0);     // Assuming the name is in the first column
+                    int delay = csv.GetField<int>(1);           // Assuming the delay is in the second column
+                    bool isAdmin = csv.GetField<bool>(2);       // Assuming isAdmin is in the third column
+
+                    // Create a new CustomProgram and add it to the programs list
+                    CustomProgram program = new CustomProgram
+                    {
+                        Path = name,
+                        Delay = delay,
+                        IsAdmin = isAdmin
+                    };
+
+                    programs.Add(program);
+                }
+            }
+
+            // Switch to the CreateBatch_Panel
+            Home_Panel.Hide();
+            CreateBatch_Panel.Show();
+
+            // Display the programs in the CreateBatch_Panel
+            DisplayFilePathsInTable();
+        }
+
+        private void LaunchProgramsButton_Click(object sender, EventArgs e)
+        {
+            Button launchButton = (Button)sender;
+            // Get the profile associated with this button
+            Profile profileToLaunch = profiles[(int)launchButton.Tag];
+
+            foreach (var program in profileToLaunch.programs)
+            {
+                // Create a new process
+                Process proc = new Process();
+                proc.StartInfo.FileName = program.Path;
+
+                // If the program requires admin privileges, use the 'runas' verb
+                if (program.IsAdmin)
+                {
+                    proc.StartInfo.Verb = "runas";
+                }
+
+                // Start the program
+                proc.Start();
+
+                // Wait for the specified delay before launching the next program
+                System.Threading.Thread.Sleep(program.Delay);
+            }
         }
 
         private void printProgramsArray()
@@ -223,20 +325,20 @@ namespace MultipleProgramLauncher
                 filePathLabel.Tag = i;
 
                 // Create a Button to remove the file path
-                Button removeButton = new Button();
-                removeButton.Text = "Remove";
-                removeButton.Name = "RemoveButton" + i; // Set a unique name for each Button
-                removeButton.Size = new Size(100, 30);
-                removeButton.Location = new Point(10, filePathLabel.Bottom + 5); // Below the file path Label
-                removeButton.Click += RemoveButton_Click;
-                removeButton.Tag = i;
+                Button removeProgramButton = new Button();
+                removeProgramButton.Text = "Remove";
+                removeProgramButton.Name = "RemoveButton" + i; // Set a unique name for each Button
+                removeProgramButton.Size = new Size(100, 30);
+                removeProgramButton.Location = new Point(10, filePathLabel.Bottom + 5); // Below the file path Label
+                removeProgramButton.Click += RemoveProgramButton_Click;
+                removeProgramButton.Tag = i;
 
                 // Create a Label for the program delay
                 Label delayLabel = new Label();
                 delayLabel.Text = "Delay in ms for next program:";
                 delayLabel.Name = "DelayLabel" + i;
                 delayLabel.AutoSize = true;
-                delayLabel.Location = new Point(removeButton.Right + 10, removeButton.Top + 5); // To the right of the remove button
+                delayLabel.Location = new Point(removeProgramButton.Right + 10, removeProgramButton.Top + 5); // To the right of the remove button
 
                 // Create a TextBox for the program delay input
                 TextBox delayTextBox = new TextBox();
@@ -245,13 +347,13 @@ namespace MultipleProgramLauncher
                 delayTextBox.Text = "0"; // Set the default value to "0"
                 delayTextBox.Size = new Size(70, 20);
                 delayTextBox.Tag = i;
-                delayTextBox.Location = new Point(delayLabel.Right + 110, removeButton.Top); // To the right of the delay Label
+                delayTextBox.Location = new Point(delayLabel.Right + 110, removeProgramButton.Top); // To the right of the delay Label
                 delayTextBox.TextChanged += DelayTextBox_TextChanged; // Add event handler for delay changes
 
 
                 // Add the Label, TextBox, and Remove Button to the filePathPanel
                 filePathPanel.Controls.Add(filePathLabel);
-                filePathPanel.Controls.Add(removeButton);
+                filePathPanel.Controls.Add(removeProgramButton);
                 filePathPanel.Controls.Add(delayLabel);
                 filePathPanel.Controls.Add(delayTextBox);
 
@@ -286,35 +388,32 @@ namespace MultipleProgramLauncher
                 nameLabel.Tag = i;  
 
                 // Create a button to remove the profile (you can customize this part)
-                Button removeButton = new Button();
-                removeButton.Text = "Remove";
-                removeButton.Size = new Size(100, 30);
-                removeButton.Location = new Point(10, nameLabel.Bottom + 5); ;
-                removeButton.Tag = i;
+                Button removeProfileButton = new Button();
+                removeProfileButton.Text = "Remove";
+                removeProfileButton.Size = new Size(100, 30);
+                removeProfileButton.Location = new Point(10, nameLabel.Bottom + 5); ;
+                removeProfileButton.Tag = i;
 
                 Button editButton = new Button();
                 editButton.Text = "Edit";
                 editButton.Size = new Size(100, 30);
                 editButton.Location = new Point(150, nameLabel.Bottom + 5);
                 editButton.Tag = i;
+                editButton.Click += EditButton_Click;
 
                 Button launchProgramsButton = new Button();
                 launchProgramsButton.Text = "Launch";
                 launchProgramsButton.Size = new Size(100, 30);
                 launchProgramsButton.Location = new Point(500, nameLabel.Bottom + 5);
                 launchProgramsButton.Tag = i;
+                launchProgramsButton.Click += LaunchProgramsButton_Click;
 
                 // Attach a Click event handler for the remove button
-                removeButton.Click += (sender, e) =>
-                {
-                    // Handle the removal of the profile here
-                    // You can access the 'profile' object associated with this panel
-                    // using the Tag property or any other method you prefer
-                };
+                removeProfileButton.Click += RemoveProfileButton_Click;
 
                 // Add the label and remove button to the profile panel
                 profilePanel.Controls.Add(nameLabel);
-                profilePanel.Controls.Add(removeButton);
+                profilePanel.Controls.Add(removeProfileButton);
                 profilePanel.Controls.Add(editButton);
                 profilePanel.Controls.Add(launchProgramsButton);
                 profilePanel.Controls.Add(launchProgramsButton);
@@ -322,7 +421,6 @@ namespace MultipleProgramLauncher
                 ProgramLauncher_Flow_Panel.Controls.Add(profilePanel);
             }
         }
-
         private void printProfiles()
         {
             foreach (var profile in profiles)
